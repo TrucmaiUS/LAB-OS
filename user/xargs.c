@@ -1,88 +1,59 @@
 #include "kernel/types.h"
+#include "kernel/stat.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
-#include "kernel/param.h"
+#include "kernel/param.h" // MAXARG = 32
 
-int
-main(int argc, char *argv[])
-{
-  if(argc > 1){
-    int pid = fork();
+int main(int argc, char* argv[]) {
+    int x_argc = 0;
+    char* x_argv[MAXARG];
+    int start = 0;
 
-    if(pid < 0){
-      fprintf(2, "xargs: fork error\n");
-      exit(1);
-    }
-
-    if(pid == 0){
-      int xargc = argc - 1;
-      int xc = xargc;
-
-      if(xargc > MAXARG){
-        fprintf(2, "xargs: argument number overflow\n");
-        exit(1);
-      }
-
-      char *xargv[MAXARG];
-      memset(xargv, 0, sizeof(xargv));
-      memcpy(xargv, argv + 1, xargc * sizeof(char *));
-
-      char p[64];
-      int s = 0;
-      while(read(0, &p[s], 1) > 0){
-        if(p[s] == '\n'){
-          xargc++;
-          if(xargc > MAXARG){
-            fprintf(2, "xargs: argument number overflow\n");
-            exit(1);
-          }
-          p[s] = '\0';
-          char *arg = malloc(strlen(p) + 1);
-          strcpy(arg, p);
-          xargv[xargc - 1] = arg;
-          s = 0;
-          xargv[xargc] = 0;
-
-          int pid = fork();
-
-          if(pid < 0){
-            fprintf(2, "xargs: fork error\n");
-            exit(1);
-          }
-
-          if(pid == 0){
-            exec(argv[1], xargv);
-            fprintf(2, "xargs: exec failed\n");
-            exit(1);
-          } else {
-            wait(0);
-          }
-
-          xargc = xc;
-
-        } else if (p[s] == ' '){
-          xargc++;
-          if(xargc > MAXARG){
-            fprintf(2, "xargs: argument number overflow\n");
-            exit(1);
-          }
-          p[s] = '\0';
-          char *arg = malloc(strlen(p) + 1);
-          strcpy(arg, p);
-          xargv[xargc - 1] = arg;
-          s = 0;
-        } else {
-          s++;
-        }
-      }
-
-      
+    // handle "-n"
+    if(argc > 1 && strcmp(argv[1], "-n") == 0) {
+        start = 2;
     } else {
-      wait(0);
+        start = 1;
     }
-  } else {
-    fprintf(2, "xargs: no command\n");
-    exit(1);
-  }
-  exit(0);
+
+    for(int i = start; i < argc; i++) {
+        // allocate memory
+        x_argv[x_argc] = malloc(strlen(argv[i])+1); // +1 for '\0'
+        if(!x_argv[x_argc]) {
+            printf("xargs: allocate memory failed.\n");
+            exit(1);
+        }
+        strcpy(x_argv[x_argc++], argv[i]);
+    }
+
+    char buf;
+    x_argv[x_argc] = malloc(512);
+    int index = 0;
+
+    while(read(0, &buf, 1)) {
+        if(buf == '\n') {
+            x_argv[x_argc][index] = '\0';
+
+            if(fork() == 0) {
+                exec(x_argv[0], x_argv);
+
+                printf("xargs: exec failed\n");
+                exit(1);
+            }
+            else {
+                wait(0);
+                index = 0;
+            }
+        } 
+        else {
+            x_argv[x_argc][index++] = buf;
+        }
+    }
+
+    // deallocate
+    for(int j = 0; j <= x_argc; j++) {
+        free(x_argv[j]);
+    }
+
+    exit(0);
 }

@@ -1,85 +1,89 @@
-#include "kernel/types.h"
-#include "kernel/fcntl.h"
-#include "user/user.h"
+typedef unsigned int uint;
+#include "user.h"
 
-#define MAX_NUM 270
-
-void primes(int) __attribute__((noreturn));
-
-void
-primes(int readDp)
+void primes(int leftPipe)
 {
-  short prime;
-  if(read(readDp, &prime, 2) == 0){
-    close(readDp);
-    exit(0);
-  }
-  printf("prime %d\n", prime);
+    int prime;
+    if (read(leftPipe, &prime, sizeof(int)) != sizeof(int))
+    {
+        close(leftPipe);
+        return;
+    }
 
-  int right[2];
-  if(pipe(right) < 0){
-    fprintf(2, "pipe error\n");
-    exit(1);
-  }
+    printf("primes %d\n", prime);
 
-  short n;
-  while(read(readDp, &n, 2) > 0){
-    if(n % prime != 0)
-      write(right[1], &n, 2);
-  }
-    
-  close(readDp);
-  close(right[1]);
+    int rightPipe[2];
+    if (pipe(rightPipe) < 0)
+    {
+        printf("pipe failed");
+        return;
+    }
 
-  int pid = fork();
+    int pid = fork();
 
-  if(pid < 0){
-    fprintf(2, "fork error\n");
-    exit(1);
-  }
+    if (pid < 0)
+    {
+        printf("fork failed");
+        close(rightPipe[1]);
+        close(rightPipe[0]);
+        close(leftPipe);
+        return;
+    }
+    if (pid == 0)
+    {
+        close(rightPipe[1]);
+        close(leftPipe);
+        primes(rightPipe[0]);
+        close(rightPipe[0]);
+    }
+    else
+    {
+        close(rightPipe[0]);
+        int num;
+        while (read(leftPipe, &num, sizeof(int)) > 0)
+            if (num % prime != 0)
+                write(rightPipe[1], &num, sizeof(int));
 
-  if(pid == 0){
-    primes(right[0]);
-    close(right[0]);
-  } else {
-    close(right[0]);
-    wait(0);
-  }
-  exit(0);
+        close(rightPipe[1]);
+        close(leftPipe);
+        wait(0);
+    }
+
+    close(rightPipe[1]);
+    close(rightPipe[0]);
+    return;
 }
 
-int
-main(int argc, char *argv[])
+int main()
 {
-  int p[2];
-  if(pipe(p) < 0){
-    fprintf(2, "pipe error\n");
-    exit(1);
-  }
-
-  int pid = fork();
-
-  if(pid < 0){
-    fprintf(2, "fork error\n");
-    exit(1);
-  }
-
-  if(pid == 0){
-    close(p[1]);
-    primes(p[0]);
-  } else {
-    close(p[0]);
-    short n[MAX_NUM];
-    for(int i = 0; i < MAX_NUM; i++){
-      n[i] = i + 2;
-      if(write(p[1], &n[i], 2) < 0){
-        fprintf(2, "write error\n");
-        exit(1);
-      }
+    int p[2];
+    if (pipe(p) < 0)
+    {
+        printf("pipe failed");
+        return 1;
     }
-    close(p[1]);
-    wait(0);
-  }
-  
-  exit(0);
+
+    int pid = fork();
+
+    if (pid < 0)    {
+        printf("fork failed");
+        return 1;
+    }
+
+    if (pid == 0) // child
+    {
+        close(p[1]);
+        primes(p[0]);
+    }
+    else // parent
+    {
+        close(p[0]);
+        for (int i = 2; i < 280; i++)
+            write(p[1], &i, sizeof(int));
+
+        close(p[1]);
+        wait(0);
+    }
+
+    return 0;
 }
