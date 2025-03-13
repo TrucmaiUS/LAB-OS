@@ -29,6 +29,7 @@ struct spinlock wait_lock;
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
+
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
@@ -695,3 +696,29 @@ procdump(void)
     printf("\n");
   }
 }
+
+uint64
+get_nproc(void) {
+  struct proc *p;
+  uint64 count = 0;
+
+  for (p = proc; p < &proc[NPROC]; p++) {
+      if (p->state != UNUSED)
+          count++;
+  }
+  return count;
+}
+
+uint64
+compute_loadavg(void) {
+  uint64 running = 0;
+  struct proc *p;
+  
+  for (p = proc; p < &proc[NPROC]; p++) {
+      if (p->state == RUNNING)
+          running++;
+  }
+
+  return (running * 100) / NPROC; // Load avg as percentage
+}
+
